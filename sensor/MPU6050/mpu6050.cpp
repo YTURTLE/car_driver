@@ -14,6 +14,19 @@ MPU6050::MPU6050()
 
 }
 
+MPU6050::MPU6050(int acc_scale, int gyr_scale, int bandwidth)
+{
+#ifndef I2C_Init_H
+#define I2C_Init_H
+    I2C.i2c_init();
+#endif // I2C_Init_H
+    set_clock_source();
+    set_acc_scale(acc_scale);
+    set_gyr_scale(gyr_scale);
+    set_dlpf(bandwidth);
+    mpu_cor_offset(); //加速度,陀螺仪零偏矫正
+}
+
 void MPU6050::set_clock_source()
 {
     I2C.i2c_write_byte(DEVRICE_ADDRESS, PWR_MGMT_1, uint8_t(0x01));;
