@@ -1,228 +1,245 @@
 #include "mpu6050.h"
-MPU6050 mpu;
-void MPU6050::mpuInit(){
-    Wire.begin();
-    //reset();
-    setClockSource();
-    setFullScaleAccRange(); // 2g
-    setFullScaleGyroRange();// 250
-    setSleepEnabled(); //false
-    setDLPFEnabled();//44Hz
-}
-void MPU6050::reset(){
-    uint8_t b;
-    uint8_t count;
-    Wire.beginTransmission(DEVADRESS);
-    Wire.write((uint8_t)0x6B);
-    Wire.endTransmission();
-    Wire.beginTransmission(DEVADRESS);
-    Wire.requestFrom(DEVADRESS, (uint8_t)1);
-    for(;Wire.available();count++)
-    {
-        b = Wire.read();
-    }
-    Wire.endTransmission();
-    uint8_t data = 1;
-    uint8_t bitNum = 7;
-    b = (data != 0) ? (b | (1 << bitNum)) : (b & ~(1 << bitNum));
-    Wire.beginTransmission(DEVADRESS);
-    Wire.write((uint8_t)0x6B);
-    Wire.write(b);
-    Wire.endTransmission();
-}
 
-int MPU6050::writeBits(uint8_t regAddr,uint8_t bitStart, uint8_t length, uint8_t data){
-    uint8_t count = 0;
-    Wire.beginTransmission(DEVADRESS);
-    Wire.write(regAddr);
-    Wire.endTransmission();
-    Wire.beginTransmission(DEVADRESS);
-    Wire.requestFrom(DEVADRESS, (uint8_t)1);
-    uint8_t b;
-    for(;Wire.available();count++){
-        b = Wire.read();
-    }
-    Wire.endTransmission();
-    uint8_t soure = data;
-    if(count != 0){
-        uint8_t mask = ((1 << length) - 1) << (bitStart - length + 1);
-        soure <<= (bitStart - length + 1); // shift data into correct position
-        soure &= mask; // zero all non-important bits in data
-        b &= ~(mask); // zero all important bits in existing byte
-        b |= soure; // combine data with existing byte
-        Wire.beginTransmission(DEVADRESS);
-        Wire.write(regAddr);
-        Wire.write(b);
-        Wire.endTransmission();
-        std::cout << "b:" << (int)b << std::endl;
-    }else{
-        return -1;
-    }
-    return 0;
-}
-
-void MPU6050::setDLPFEnabled(){
-    int status;
-    //std::cout << "setDLPFEnabled \n";
-    status = writeBits(0x1A, 2, 3, 0x05);
-    if(status == -1)
-        std::cout << "setDLPFEnabled false\n";
-}
-
-void MPU6050::setClockSource(){
-    int status;
-    status = writeBits(0x6B, 2, 3, 0x01);
-    if(status == -1)
-        std::cout << "setClock false\n";
-}
-void MPU6050::setFullScaleAccRange(){
-    int status;
-    writeBits(0x1C, 4, 2, 0x00);
-    if(status == -1)
-        std::cout << "setAccRange false\n";
-}
-void MPU6050::setFullScaleGyroRange(){
-    int status;
-    writeBits(0x1B, 4, 2, 0x00);
-    if(status == -1)
-        std::cout << "setGyroRange false\n";
-}
-void MPU6050::setSleepEnabled(){
-    int status;
-    writeBits(0x6B, 6, 1, 0x00);
-    if(status == -1)
-        std::cout << "setSleepEnabled false\n";
-}
-void MPU6050::getMotion6(){
-    uint8_t count = 0;
-    uint8_t buffer[14];
-    Wire.beginTransmission(DEVADRESS);
-    Wire.write((uint8_t)0x3B);
-    Wire.endTransmission();
-    Wire.beginTransmission(DEVADRESS);
-    Wire.requestFrom(DEVADRESS, (uint8_t)14);
-    for(;Wire.available();count++){
-        buffer[count] = Wire.read();
-    }
-    Wire.endTransmission();
-    this->acc[0] = (((int16_t)buffer[0]) << 8) | buffer[1];
-    this->acc[1] = (((int16_t)buffer[2]) << 8) | buffer[3];
-    this->acc[2] = (((int16_t)buffer[4]) << 8) | buffer[5];
-    this->gyr[0] = (((int16_t)buffer[8]) << 8) | buffer[9];
-    this->gyr[1] = (((int16_t)buffer[10]) << 8) | buffer[11];
-    this->gyr[2] = (((int16_t)buffer[12]) << 8) | buffer[13];
-}
-void MPU6050::readAcc(int *acc_x, int *acc_y, int *acc_z){
-    *acc_x = this->acc[0] - this->accOffset[0];
-    *acc_y = this->acc[1] - this->accOffset[1];
-    *acc_z = this->acc[2] - this->accOffset[2];
-}
-void MPU6050::readGyr(int *gyr_x, int *gyr_y, int *gyr_z){
-    *gyr_x = this->gyr[0] - this->gyrOffset[0];
-    *gyr_y = this->gyr[1] - this->gyrOffset[1];
-    *gyr_z = this->gyr[2] - this->gyrOffset[2];
-}
-void MPU6050::accCorOffset(){
-    static float tempAcc[3]={0,0,0};
-    static int16_t cnt_a=0;
-
-    if(cnt_a==0)
-    {
-        this->accOffset[0] = 0;
-        this->accOffset[1] = 0;
-        this->accOffset[2] = 0;
-        tempAcc[0] = 0;
-        tempAcc[1] = 0;
-        tempAcc[2] = 0;
-        cnt_a = 1;
-        std::cout <<"hello\n";
-        return;
-    }
-    tempAcc[0] += this->acc[0];
-    tempAcc[1] += this->acc[1];
-    tempAcc[2] += this->acc[2];
-    if(cnt_a == CALIBRATING_ACC_CYCLES)
-    {
-        this->accOffset[0] = tempAcc[0]/cnt_a;
-        this->accOffset[1] = tempAcc[1]/cnt_a;
-        this->accOffset[2] = tempAcc[2]/cnt_a - ACC_1G;
-        std::cout << "accOffset.x:" << accOffset[0] << std::endl;
-        std::cout << "accOffset.y:" << accOffset[1] << std::endl;
-        std::cout << "accOffset.z:" << accOffset[2] << std::endl;
-        cnt_a = 0;
-        return;
-    }
-    cnt_a++;
-}
-void MPU6050::gyrCorOffset(){
-    static float tempGyr[3]={0,0,0};
-    static int16_t cnt_a=0;
-
-    if(cnt_a==0)
-    {
-        this->gyrOffset[0] = 0;
-        this->gyrOffset[1] = 0;
-        this->gyrOffset[2] = 0;
-        tempGyr[0] = 0;
-        tempGyr[1] = 0;
-        tempGyr[2] = 0;
-        cnt_a = 1;
-        return;
-    }
-    tempGyr[0] += this->gyr[0];
-    tempGyr[1] += this->gyr[1];
-    tempGyr[2] += this->gyr[2];
-    if(cnt_a == CALIBRATING_GYRO_CYCLES)
-    {
-        this->gyrOffset[0] = tempGyr[0]/cnt_a;
-        this->gyrOffset[1] = tempGyr[1]/cnt_a;
-        this->gyrOffset[2] = tempGyr[2]/cnt_a;
-        cnt_a = 0;
-        std::cout << "gyrOffset.x:" << gyrOffset[0] << std::endl;
-        std::cout << "gyrOffset.y:" << gyrOffset[1] << std::endl;
-        std::cout << "gyrOffset.z:" << gyrOffset[2] << std::endl;
-        return;
-    }
-    cnt_a++;
-}
-void MPU6050::LPF_1st_Factor_Cal(float deltaT, float Fcut){
-    this->LPF_1st_coe = deltaT / (deltaT + 1 / (2 * Pi * Fcut));
-}
-void MPU6050::LPF_2nd_Factor_Cal(float deltaT, float Fcut)
+MPU6050::MPU6050()
 {
-    float a = 1 / (2 * Pi * Fcut * deltaT);
-    this->LPF_2nd_coe_b0 = 1 / (a*a + 3*a + 1);
-    this->LPF_2nd_coe_a1  = (2*a*a + 3*a) / (a*a + 3*a + 1);
-    this->LPF_2nd_coe_a2  = (a*a) / (a*a + 3*a + 1);
-    std::cout << "b0:" << LPF_2nd_coe_b0 << std::endl;
-    std::cout << "a1:" << LPF_2nd_coe_a1 << std::endl;
-    std::cout << "a2:" << LPF_2nd_coe_a2 << std::endl;
-}
-void MPU6050::LPF_1st(float data[]){
-    data[0] = this->last_data[0]*(1-this->LPF_1st_coe) + data[0]*this->LPF_1st_coe;
-    data[1] = this->last_data[1]*(1-this->LPF_1st_coe) + data[1]*this->LPF_1st_coe;
-    data[2] = this->last_data[2]*(1-this->LPF_1st_coe) + data[2]*this->LPF_1st_coe;
+#ifndef I2C_Init_H
+#define I2C_Init_H
+    I2C.i2c_init();
+#endif // I2C_Init_H
+    set_clock_source();
+    set_acc_scale(2);
+    set_gyr_scale(250);
+    set_dlpf(44);
+    mpu_cor_offset(); //加速度,陀螺仪零偏矫正
 
-    this->last_data[0] = data[0];
-    this->last_data[1] = data[1];
-    this->last_data[2] = data[2];
-
-   // std::cout << "acc_x:" << data[0] << std::endl;
-   // std::cout << "acc_y:" << data[1] << std::endl;
-   // std::cout << "acc_z:" << data[2] << std::endl;
 }
-void MPU6050::LPF_2nd(float acc[])
+
+void MPU6050::set_clock_source()
 {
-
-    acc[0] = acc[0] * this->LPF_2nd_coe_b0 + this->last_data[0] * this->LPF_2nd_coe_a1 -
-            this->prve_data[0] * this->LPF_2nd_coe_a2;
-    acc[1] = acc[1] * this->LPF_2nd_coe_b0 + this->last_data[1] * this->LPF_2nd_coe_a1 -
-            this->prve_data[1] * this->LPF_2nd_coe_a2;
-
-    this->prve_data[0] = this->last_data[0];
-    this->prve_data[1] = this->last_data[1];
-
-    this->last_data[0] = acc[0];
-    this->last_data[1] = acc[1];
-
+    I2C.i2c_write_byte(DEVRICE_ADDRESS, PWR_MGMT_1, uint8_t(0x01));;
 }
+
+//@set_dlpf
+//@band_width 260Hz,184Hz,94Hz,44Hz,21Hz,10Hz,5Hz
+void MPU6050::set_dlpf(int band_width)
+{
+    uint8_t mode;
+    switch (band_width)
+    {
+    case 260:
+        mode = 0x00;
+        break;
+    case 184:
+        mode = 0x01;
+        break;
+    case 94:
+        mode = 0x02;
+        break;
+    case 44:
+        mode = 0x03;
+        break;
+    case 21:
+        mode = 0x04;
+        break;
+    case 10:
+        mode = 0x05;
+        break;
+    case 5:
+        mode = 0x06;
+        break;
+    default:
+        mode = 0x07; //保留
+        break;
+    }
+    I2C.i2c_write_byte(DEVRICE_ADDRESS, CONFIG, mode);
+}
+//@set_gyr_scale
+//@scale 250,500,1000,2000
+void MPU6050::set_gyr_scale(int scale)
+{
+    uint8_t mode;
+    switch(scale)
+    {
+    case 250:
+        mode = 0x00;
+        gyr_mScale = 7.63; //±250º/s,131 LSB/(º/s)
+        break;
+    case 500:
+        mode = 0x01;
+        gyr_mScale = 15.27; //±500º/s,65.5 LSB/(º/s)
+        break;
+    case 1000:
+        mode = 0x02;
+        gyr_mScale = 30.49; //±1000º/s,32.8 LSB/(º/s)
+        break;
+    case 2000:
+        mode = 0x03;
+        gyr_mScale = 60.98; //±2000º/s,16.4 LSB/(º/s)
+        break;
+    default:
+        mode = 0x00;
+        gyr_mScale = 7.63;
+        break;
+    }
+    mode = mode << 3;
+    I2C.i2c_write_byte(DEVRICE_ADDRESS, GYRO_CONFIG, mode);
+}
+//@set_acc_scale
+//@scale 2,4,8,16
+void MPU6050::set_acc_scale(int scale)
+{
+    uint8_t mode;
+    switch(scale)
+    {
+    case 2: //±2g,16384 LSB/g
+        mode = 0x00;
+        acc_mScale = 0.06;
+        ACC_1G = 16384;
+        break;
+    case 4: //±4g,8192 LSB/g
+        mode = 0x01;
+        acc_mScale = 0.12;
+        ACC_1G = 8192;
+        break;
+    case 8: //±8g,4096 LSB/g
+        mode = 0x02;
+        acc_mScale = 0.24;
+        ACC_1G = 4096;
+        break;
+    case 16: //±16g,2048 LSB/g
+        mode = 0x03;
+        acc_mScale = 0.49;
+        ACC_1G = 2048;
+        break;
+    default:
+        mode = 0x00;
+        acc_mScale = 0.06;
+        ACC_1G = 16384;
+        break;
+    }
+    mode = mode << 3;
+    I2C.i2c_write_byte(DEVRICE_ADDRESS, ACCEL_CONFIG, mode);
+}
+//读取加速度原始数据
+AcceleraterRaw MPU6050::read_acc_raw()
+{
+    std::vector<uint8_t> buffer = I2C.i2c_read_bytes(DEVRICE_ADDRESS, ACCEL_XOUT_H, uint8_t(6));
+    AcceleraterRaw raw;
+    raw.XAis = int16_t(int16_t(int16_t(buffer[0]) << 8) | buffer[1]);
+    raw.YAis = int16_t(int16_t(int16_t(buffer[2]) << 8) | buffer[3]);
+    raw.ZAis = int16_t(int16_t(int16_t(buffer[4]) << 8) | buffer[5]);
+    // std::cout << "raw.XAis:" << raw.XAis << std::endl
+    //           << "raw.YAis:" << raw.YAis << std::endl
+    //           << "raw.ZAis:" << raw.ZAis << std::endl;
+    return raw;
+}
+AcceleraterRaw MPU6050::read_acc_raw_offset()
+{
+    SensorRaw raw;
+    raw = read_acc_raw();
+    //std::cout << "@read_acc_raw_offset\n";
+    //std::cout << "raw.XAis:" << raw.XAis << std::endl
+    //          << "raw.YAis:" << raw.YAis << std::endl
+    //          << "raw.ZAis:" << raw.ZAis << std::endl;
+    //std::cout << "@read_acc_raw_offset end\n";
+    raw = raw - acc_offset;
+    return raw;
+}
+
+//读取加速度量化后的数据
+AcceleraterScale MPU6050::read_acc_scale()
+{
+    AcceleraterRaw raw = read_acc_raw_offset();
+    return (raw * acc_mScale);//单位g
+}
+//读取陀螺仪原始数据
+GyroscopeRaw MPU6050::read_gyr_raw()
+{
+    std::vector<uint8_t> buffer = I2C.i2c_read_bytes(DEVRICE_ADDRESS, GYRO_XOUT_H, uint8_t(6));
+    GyroscopeRaw raw;
+    raw.XAis = int16_t(int16_t(int16_t(buffer[0]) << 8) | buffer[1]);
+    raw.YAis = int16_t(int16_t(int16_t(buffer[2]) << 8) | buffer[3]);
+    raw.ZAis = int16_t(int16_t(int16_t(buffer[4]) << 8) | buffer[5]);
+    return raw;
+}
+GyroscopeRaw MPU6050::read_gyr_raw_offset()
+{
+    GyroscopeRaw raw;
+    raw = read_gyr_raw();
+    raw = raw - gyr_offset;
+    return raw;
+}
+
+//读取陀螺仪量化后的数据
+GyroscopeScale MPU6050::read_gyr_scale()
+{
+    GyroscopeRaw raw = read_gyr_raw_offset();
+    return (raw * gyr_mScale); //单位dps
+}
+void MPU6050::acc_cor_offset(const int & callbrating_acc_cycles)
+{
+    static int cnt_a = 0;
+    static AcceleraterScale temp_scale;
+    AcceleraterRaw raw;
+    if(cnt_a == 0)
+    {
+        temp_scale = 0;
+        acc_offset = 0;
+        cnt_a = 1;
+        return;
+    }
+    raw = read_acc_raw();
+    temp_scale += raw;
+    if(cnt_a == callbrating_acc_cycles)
+    {
+        acc_offset = temp_scale / cnt_a;
+        acc_offset.ZAis = acc_offset.ZAis - ACC_1G;
+        cnt_a = 0;
+        std::cout << "acc_offset.XAis:" << acc_offset.XAis << std::endl
+                  << "acc_offset.YAis:" << acc_offset.YAis << std::endl
+                  << "acc_offset.ZAis:" << acc_offset.ZAis << std::endl;
+        return;
+    }
+    cnt_a ++;
+}
+void MPU6050::gyr_cor_offset(const int & callbrating_gyr_cycles)
+{
+    static int cnt_g = 0;
+    static GyroscopeScale temp_scale;
+    GyroscopeRaw raw;
+    if(cnt_g==0)
+    {
+        temp_scale = 0;
+        gyr_offset = 0;
+        cnt_g = 1;
+        return;
+    }
+    raw = read_gyr_raw();
+    temp_scale += raw;
+    if(cnt_g == callbrating_gyr_cycles)
+    {
+        gyr_offset = temp_scale / cnt_g;
+        cnt_g = 0;
+        std::cout << "gyr_offset.XAis:" << gyr_offset.XAis << std::endl
+                  << "gyr_offset.YAis:" << gyr_offset.YAis << std::endl
+                  << "gyr_offset.ZAis:" << gyr_offset.ZAis << std::endl;
+        return;
+    }
+    cnt_g ++;
+}
+void MPU6050::mpu_cor_offset()
+{
+    const int cal_acc_cycles = 400, cal_gyr_cycles = 1000;
+
+    for(int i=0;i<=cal_acc_cycles;i++)
+    {
+        acc_cor_offset(cal_acc_cycles);
+        gyr_cor_offset(cal_gyr_cycles);
+    }
+    for(int n=0;n<=cal_gyr_cycles;n++)
+    {
+        gyr_cor_offset(cal_gyr_cycles);
+    }
+}
+void setup(){}
+void loop(){}

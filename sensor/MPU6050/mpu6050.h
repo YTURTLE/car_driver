@@ -1,46 +1,45 @@
 #ifndef MPU6050_H
 #define MPU6050_H
-#include <iostream>
-#include "/usr/include/pcduino/Arduino.h"
-#include "/usr/include/pcduino/Wire.h"
-#define Pi                                  3.141592653f
-typedef short                               int16_t;
-typedef unsigned char                       uint8_t;
-#define CALIBRATING_ACC_CYCLES              400
-#define CALIBRATING_GYRO_CYCLES             1000
-#define ACC_1G                              16384                // 2g
-#define ACCCOMPANY                          0.06f// (1/16384)*980   g/LSB 单位：cm/s^2 0.06mg/LSB
-#define GYROCOMPANY                         0.007633587786259542f // (1/131) (º/s)/LSB
+
+#include "sensor.h"
+#include "arduino_i2c.h"
+
+
 class MPU6050
 {
-private:
-  static const uint8_t DEVADRESS = 0x68; //address pin low (GND), default for InvenSense evaluation board
-  int16_t acc[3];
-  int16_t gyr[3];
-  int accOffset[3];
-  int gyrOffset[3];
-  float LPF_1st_coe;
-  float LPF_2nd_coe_a1, LPF_2nd_coe_a2, LPF_2nd_coe_b0;
-  //const static float Fcut = 50;
-  static int writeBits(uint8_t regAddr,uint8_t bitStart, uint8_t length, uint8_t data);
-  static void setClockSource();
-  static void setFullScaleAccRange();
-  static void setFullScaleGyroRange();
-  static void setSleepEnabled();
-  static void setDLPFEnabled();
 public:
-  float last_data[3], prve_data[3];
-  void LPF_2nd(float data[]);
-  void LPF_2nd_Factor_Cal(float deltaT, float Fcut);
-  void LPF_1st_Factor_Cal(float deltaT, float Fcut);
-  void LPF_1st(float data[]);
-  void reset();
-  void mpuInit();
-  void getMotion6();
-  void readAcc(int* acc_x, int* acc_y, int* acc_z);
-  void readGyr(int* gyr_x, int* gyr_y, int* gyr_z);
-  void accCorOffset();
-  void gyrCorOffset();
+    MPU6050();
+    AcceleraterRaw read_acc_raw_offset();
+    AcceleraterScale read_acc_scale();
+    GyroscopeRaw read_gyr_raw_offset();
+    GyroscopeScale read_gyr_scale();
+
+protected:
+    void set_clock_source(); //配置时钟源
+    void set_acc_scale(int scale); //配置加速度量程
+    void set_gyr_scale(int scale); //配置陀螺仪量程
+    void set_dlpf(int band_width); //配置数字低通滤波器
+    void acc_cor_offset(const int & callbrating_acc_cycles);
+    void gyr_cor_offset(const int & callbrating_gyr_cycles);
+    void mpu_cor_offset();
+    AcceleraterRaw read_acc_raw();
+    GyroscopeRaw read_gyr_raw();
+
+private:
+    static const uint8_t DEVRICE_ADDRESS = 0x68; //MPU6050设备默认地址
+    static const uint8_t PWR_MGMT_1 = 0x6B; //配置复位，温度传感器，低功耗模式，时钟源寄存器地址
+    static const uint8_t CONFIG = 0x1A; //配置加速度，陀螺仪低通滤波器(DLPF)寄存器地址
+    static const uint8_t GYRO_CONFIG = 0x1B; //配置陀螺仪量程寄存器地址
+    static const uint8_t ACCEL_CONFIG = 0x1C; //配置加速度量程寄存器地址
+    static const uint8_t ACCEL_XOUT_H = 0x3B; //0x3B->0x40,分别存放AXH(加速度),AXL,AYH,AYL.AZH,AZL
+    static const uint8_t GYRO_XOUT_H = 0x43; //0x43->0x48, 分别存放GXH(陀螺仪),GXL,GYH,GYL,GZH,GZL
+    int ACC_1G;
+    AcceleraterRaw acc_offset;
+    GyroscopeRaw gyr_offset;
+    Arduino_i2c I2C;
+    float acc_mScale; //加速度输出分辨率
+    float gyr_mScale; //陀螺仪输出分辨率
+
 };
-extern MPU6050 mpu;
+
 #endif // MPU6050_H
