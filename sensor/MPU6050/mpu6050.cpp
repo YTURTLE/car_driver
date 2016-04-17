@@ -249,7 +249,7 @@ void MPU6050::mpu_cor_offset()
         acc_cor_offset(cal_acc_cycles);
         gyr_cor_offset(cal_gyr_cycles);
     }
-    for(int n=0;n<=cal_gyr_cycles;n++)
+    for(int n=cal_acc_cycles+1;n<=cal_gyr_cycles;n++)
     {
         gyr_cor_offset(cal_gyr_cycles);
     }
