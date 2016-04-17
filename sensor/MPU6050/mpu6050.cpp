@@ -254,5 +254,3 @@ void MPU6050::mpu_cor_offset()
         gyr_cor_offset(cal_gyr_cycles);
     }
 }
-void setup(){}
-void loop(){}
